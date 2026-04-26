@@ -174,6 +174,7 @@ async def logout_user(chat_id):
     
     send_message(chat_id, "✅ Logged out successfully!\n\nSend /start to login again.")
 
+# Main loop
 while True:
     try:
         response = requests.get(f"{API_URL}/getUpdates", params={"offset": last_update_id + 1, "timeout": 30}, timeout=35)
@@ -246,14 +247,14 @@ while True:
                         send_message(chat_id, "❌ Invalid phone number! Send with country code.\nExample: +919876543210")
                 
                 # Handle OTP input
-                elif chat_id in temp_data and temp_data[chat_id].get("step") == "waiting_otp":
+                elif user_id in temp_data and temp_data.get(user_id, {}).get("step") == "waiting_otp":
                     code = text.strip()
-                    await verify_otp(chat_id, code)
+                    await verify_otp(user_id, code)
                 
                 # Handle 2FA input
-                elif chat_id in temp_data and temp_data[chat_id].get("step") == "waiting_2fa":
+                elif user_id in temp_data and temp_data.get(user_id, {}).get("step") == "waiting_2fa":
                     password = text.strip()
-                    await verify_2fa(chat_id, password)
+                    await verify_2fa(user_id, password)
                 
                 # Handle group info
                 elif user_id in user_states and user_states[user_id].get("step") == "waiting_group":
@@ -269,13 +270,13 @@ while True:
                                 send_message(chat_id, f"✅ Group set: {current_group['name']}\n\n🎵 Send Audio\n\nYou can send:\n• Audio file 🎵\n• Voice message 🎤")
                                 user_states[user_id] = {"step": "waiting_audio"}
                             else:
-                                send_message(chat_id, f"❌ Cannot find group @{username}\nMake sure the username is correct.")
+                                send_message(chat_id, f"❌ Cannot find group @{username}")
                         except Exception as e:
                             send_message(chat_id, f"❌ Error: {e}")
                     
                     elif "t.me/" in group_input:
                         user_states[user_id] = {"step": "waiting_chat_id", "invite_link": group_input}
-                        send_message(chat_id, "⚠️ Cannot find the private group automatically.\n\nPlease send the Chat ID:\n\nHow to get Chat ID:\n1. Forward any message from the group to @username_to_id_bot\n2. The bot will reply with the Chat ID\n3. Send me that Chat ID (it will look like -100123456789)")
+                        send_message(chat_id, "⚠️ Send Chat ID (example: -100123456789)")
                     
                     else:
                         send_message(chat_id, "❌ Invalid format! Send @username or invite link.")
@@ -288,12 +289,12 @@ while True:
                         send_message(chat_id, f"✅ Chat ID received: {chat_id_val}\n\n🎵 Send Audio\n\nYou can send:\n• Audio file 🎵\n• Voice message 🎤")
                         user_states[user_id] = {"step": "waiting_audio"}
                     except:
-                        send_message(chat_id, "❌ Invalid Chat ID! Please send a number like -100123456789")
+                        send_message(chat_id, "❌ Invalid Chat ID!")
                 
                 # Handle audio for playing
                 elif user_id in user_states and user_states[user_id].get("step") == "waiting_audio":
                     if not current_group:
-                        send_message(chat_id, "❌ No group selected! Please send group info first.")
+                        send_message(chat_id, "❌ No group selected!")
                         del user_states[user_id]
                         continue
                     
@@ -305,7 +306,7 @@ while True:
                         await play_audio(chat_id, audio_path, current_group["chat_id"], current_group["name"])
                         del user_states[user_id]
                     elif voice:
-                        send_message(chat_id, "📥 Downloading voice message...")
+                        send_message(chat_id, "📥 Downloading voice...")
                         voice_path = await msg.download("audio/")
                         await play_audio(chat_id, voice_path, current_group["chat_id"], current_group["name"])
                         del user_states[user_id]
@@ -319,13 +320,13 @@ while True:
                             [{"text": "🎵 Play Audio", "callback_data": "play_audio"}],
                             [{"text": "🚪 Logout", "callback_data": "logout"}]
                         ]}
-                        send_message(chat_id, f"🎵 Welcome Back, {user_account['name']}! ✅\n\nYou're already logged in!\n\nChoose an option:\n\nPowered by @sparsh_vc_bot", kb)
+                        send_message(chat_id, f"🎵 Welcome Back, {user_account['name']}! ✅\n\nChoose an option:\n\nPowered by @sparsh_vc_bot", kb)
                     else:
                         kb = {"inline_keyboard": [
                             [{"text": "🔧 Default Account", "callback_data": "default_account"}],
                             [{"text": "📱 Login My Account", "callback_data": "login_account"}]
                         ]}
-                        send_message(chat_id, "🎵 **Welcome to VC Fighting Bot!**\n\nChoose an option:\n\n• **Default Account:** Use pre-configured account\n• **Login My Account:** Use your own account\n\n**Commands:**\n• `/logout` - Logout from your account\n• `/stop` - Stop playing audio in your active group\n\nPowered by @sparsh_vc_bot", kb)
+                        send_message(chat_id, "🎵 **Welcome to VC Fighting Bot!**\n\nChoose an option:\n\n• **Default Account:** Use pre-configured account\n• **Login My Account:** Use your own account\n\n**Commands:**\n• `/logout` - Logout\n• `/stop` - Stop playing\n\nPowered by @sparsh_vc_bot", kb)
                 
                 elif text == "/addsudo":
                     if user_id != OWNER_ID:
@@ -375,7 +376,7 @@ while True:
                 elif text and not text.startswith("/"):
                     if (text.startswith("@") or "t.me/" in text) and user_account:
                         user_states[user_id] = {"step": "waiting_group"}
-                        send_message(chat_id, "📎 Send Group Info\n\nFor Public Groups:\nSend username: @groupusername\n\nFor Private Groups:\nSend invite link: https://t.me/+xxxxx")
+                        send_message(chat_id, "📎 Send Group Info\n\nPublic: @username\nPrivate: invite link")
                     elif not user_account:
                         send_message(chat_id, "❌ Please login first using /start")
         
@@ -388,4 +389,3 @@ while True:
         time.sleep(5)
 
 print("Bot stopped")
-EOF
