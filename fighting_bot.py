@@ -2,10 +2,9 @@ import requests
 import time
 import json
 import asyncio
-import re
 import os
 from pyrogram import Client
-from pyrogram.errors import PhoneNumberInvalid, SessionPasswordNeeded, PhoneCodeInvalid, PhoneCodeExpired
+from pyrogram.errors import SessionPasswordNeeded, PhoneCodeInvalid, PhoneCodeExpired
 from pytgcalls import GroupCallFactory
 from config import API_ID, API_HASH, BOT_TOKEN, OWNER_ID
 
@@ -247,12 +246,12 @@ while True:
                         send_message(chat_id, "❌ Invalid phone number! Send with country code.\nExample: +919876543210")
                 
                 # Handle OTP input
-                elif user_id in temp_data and temp_data.get(chat_id, {}).get("step") == "waiting_otp":
+                elif chat_id in temp_data and temp_data[chat_id].get("step") == "waiting_otp":
                     code = text.strip()
                     await verify_otp(chat_id, code)
                 
                 # Handle 2FA input
-                elif user_id in temp_data and temp_data.get(chat_id, {}).get("step") == "waiting_2fa":
+                elif chat_id in temp_data and temp_data[chat_id].get("step") == "waiting_2fa":
                     password = text.strip()
                     await verify_2fa(chat_id, password)
                 
@@ -389,3 +388,4 @@ while True:
         time.sleep(5)
 
 print("Bot stopped")
+EOF
