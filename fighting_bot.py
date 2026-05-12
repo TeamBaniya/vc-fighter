@@ -34,8 +34,8 @@ def send_message(chat_id, text, reply_markup=None):
         data["reply_markup"] = json.dumps(reply_markup)
     try:
         requests.post(f"{API_URL}/sendMessage", json=data, timeout=5)
-    except:
-        pass
+    except Exception as e:
+        print(f"Send message error: {e}")
 
 def is_sudo(user_id):
     return user_id in sudo_users
@@ -47,7 +47,7 @@ async def login_user(phone_number, chat_id):
         
         sent_code = await client.send_code(phone_number)
         temp_data[chat_id] = {"client": client, "phone": phone_number, "phone_code_hash": sent_code.phone_code_hash, "step": "waiting_otp"}
-        send_message(chat_id, "📨 OTP Sent!\n\nSend OTP code (numbers only, no spaces):\nExample: 85399")
+        send_message(chat_id, "📨 OTP Sent!\n\nSend OTP code (numbers only):\nExample: 85399")
         return True
     except Exception as e:
         send_message(chat_id, f"❌ Error: {str(e)}")
@@ -72,21 +72,27 @@ async def verify_otp(chat_id, code):
         factory = GroupCallFactory(client)
         user_vc = factory.get_group_call()
         
-        send_message(chat_id, f"✅ Logged in successfully!\n\n👤 Name: {me.first_name}\n🆔 ID: {me.id}\n\n📎 Send Group Info\n\nFor Public Groups:\nSend username: @groupusername\n\nFor Private Groups:\nSend invite link: https://t.me/+xxxxx")
+        send_message(chat_id, f"✅ Logged in successfully!\n\n👤 Name: {me.first_name}\n🆔 ID: {me.id}")
+        await asyncio.sleep(0.5)
+        send_message(chat_id, f"📎 Send Group Info\n\nFor Public Groups:\nSend username: @groupusername\n\nFor Private Groups:\nSend invite link: https://t.me/+xxxxx")
         
         del temp_data[chat_id]
         return True
+        
     except SessionPasswordNeeded:
         temp_data[chat_id]["step"] = "waiting_2fa"
         send_message(chat_id, "🔐 2FA Enabled\n\nPlease send your 2FA password:")
         return False
+        
     except PhoneCodeInvalid:
         send_message(chat_id, "❌ Invalid OTP! Please try again.\n\nSend OTP code (numbers only):")
         return False
+        
     except PhoneCodeExpired:
         send_message(chat_id, "❌ OTP Expired! Please start over with /start")
         del temp_data[chat_id]
         return False
+        
     except Exception as e:
         send_message(chat_id, f"❌ Error: {str(e)}")
         return False
@@ -110,7 +116,9 @@ async def verify_2fa(chat_id, password):
         factory = GroupCallFactory(client)
         user_vc = factory.get_group_call()
         
-        send_message(chat_id, f"✅ Logged in successfully!\n\n👤 Name: {me.first_name}\n🆔 ID: {me.id}\n\n📎 Send Group Info\n\nFor Public Groups:\nSend username: @groupusername\n\nFor Private Groups:\nSend invite link: https://t.me/+xxxxx")
+        send_message(chat_id, f"✅ Logged in successfully!\n\n👤 Name: {me.first_name}\n🆔 ID: {me.id}")
+        await asyncio.sleep(0.5)
+        send_message(chat_id, f"📎 Send Group Info\n\nFor Public Groups:\nSend username: @groupusername\n\nFor Private Groups:\nSend invite link: https://t.me/+xxxxx")
         
         del temp_data[chat_id]
         return True
@@ -129,6 +137,7 @@ async def play_audio(chat_id, audio_source, group_id, group_name):
         if current_vc_chat_id != group_id:
             await user_vc.join(group_id)
             current_vc_chat_id = group_id
+            await asyncio.sleep(1)
         
         await user_vc.start_audio(audio_source)
         send_message(chat_id, f"✅ Now Playing!\n\n📻 Group: {group_name}\n🎵 Audio is playing!\n\nUse /stop to stop.")
@@ -249,7 +258,7 @@ async def main():
                     # Handle OTP input
                     elif chat_id in temp_data and temp_data.get(chat_id, {}).get("step") == "waiting_otp":
                         code = ''.join(filter(str.isdigit, text.strip()))
-                        print(f"📱 OTP received (cleaned): {code}")
+                        print(f"📱 OTP received: {code}")
                         if code:
                             await verify_otp(chat_id, code)
                         else:
@@ -324,7 +333,7 @@ async def main():
                             send_message(chat_id, f"🎵 Welcome Back, {user_account['name']}! ✅\n\nChoose an option:", kb)
                         else:
                             kb = {"inline_keyboard": [[{"text": "📱 Login My Account", "callback_data": "login_account"}]]}
-                            send_message(chat_id, "🎵 **Welcome to VC Fighting Bot!**\n\nChoose an option:\n\n• **Login My Account:** Use your own account\n\n**Commands:**\n• `/logout` - Logout\n• `/stop` - Stop playing", kb)
+                            send_message(chat_id, "🎵 **Welcome to VC Fighting Bot!**\n\nChoose an option:", kb)
                     
                     elif text == "/addsudo":
                         if user_id != OWNER_ID:
