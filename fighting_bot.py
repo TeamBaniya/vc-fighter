@@ -67,11 +67,11 @@ async def verify_otp(chat_id, code):
     client = data["client"]
     
     try:
-        # CORRECT SYNTAX for Pyrogram
+        # Correct syntax for Pyrogram
         await client.sign_in(
             phone_number=data["phone"],
-            code=code,
-            phone_code_hash=data["phone_code_hash"]
+            phone_code_hash=data["phone_code_hash"],
+            phone_code=code
         )
         me = await client.get_me()
         
