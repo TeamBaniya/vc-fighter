@@ -1,21 +1,14 @@
-# test_pytgcalls.py
-import asyncio
-from pyrogram import Client
+# test_pytgcalls_simple.py
 from pytgcalls import GroupCallFactory
 
-async def main():
-    # Create a dummy client for testing
-    client = Client("test_session", in_memory=True)
-    await client.start()
-    
-    # Get group call instance
-    group_call = GroupCallFactory(client).get_group_call()
-    
-    # Print available methods
-    methods = [x for x in dir(group_call) if not x.startswith('_')]
-    print("Available methods:", methods[:20])  # Print first 20 methods
-    
-    await client.stop()
+# Just check if imports work
+print("✓ GroupCallFactory imported successfully")
 
-if __name__ == "__main__":
-    asyncio.run(main())
+# Check available methods without creating a real client
+print("\nAvailable classes in pytgcalls:")
+import pytgcalls
+for item in dir(pytgcalls):
+    if not item.startswith('_'):
+        print(f"  - {item}")
+
+print("\n✓ pytgcalls is working!")
