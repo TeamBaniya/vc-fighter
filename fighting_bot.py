@@ -6,7 +6,6 @@ import os
 from pyrogram import Client
 from pyrogram.errors import SessionPasswordNeeded, PhoneCodeInvalid, PhoneCodeExpired
 from pytgcalls import GroupCallFactory
-from pytgcalls import MediaStream
 from config import API_ID, API_HASH, BOT_TOKEN, OWNER_ID
 
 TOKEN = BOT_TOKEN
@@ -70,9 +69,10 @@ async def verify_otp(chat_id, code):
         user_client = client
         user_account = {"name": me.first_name, "id": me.id, "username": me.username, "phone": data["phone"]}
         
+        # Fixed: Use get_group_call() instead of get_file_group_call()
         factory = GroupCallFactory(client)
-        user_vc = factory.get_file_group_call()
-        await user_vc.start()
+        user_vc = factory.get_group_call()
+        # Note: Don't auto-start here, start when needed
         
         send_message(chat_id, f"✅ Logged in successfully!\n\n👤 Name: {me.first_name}\n🆔 ID: {me.id}\n\n📎 Send Group Info\n\nFor Public Groups:\nSend username: @groupusername\n\nFor Private Groups:\nSend invite link: https://t.me/+xxxxx")
         
@@ -109,9 +109,9 @@ async def verify_2fa(chat_id, password):
         user_client = client
         user_account = {"name": me.first_name, "id": me.id, "username": me.username, "phone": data["phone"]}
         
+        # Fixed: Use get_group_call() instead of get_file_group_call()
         factory = GroupCallFactory(client)
-        user_vc = factory.get_file_group_call()
-        await user_vc.start()
+        user_vc = factory.get_group_call()
         
         send_message(chat_id, f"✅ Logged in successfully!\n\n👤 Name: {me.first_name}\n🆔 ID: {me.id}\n\n📎 Send Group Info\n\nFor Public Groups:\nSend username: @groupusername\n\nFor Private Groups:\nSend invite link: https://t.me/+xxxxx")
         
@@ -129,11 +129,13 @@ async def play_audio(chat_id, audio_source, group_id, group_name):
         return False
     
     try:
+        # Join the voice chat if not already in it
         if current_vc_chat_id != group_id:
             await user_vc.join(group_id)
             current_vc_chat_id = group_id
         
-        await user_vc.play(MediaStream(audio_source))
+        # Fixed: Use start_audio() instead of play(MediaStream())
+        await user_vc.start_audio(audio_source)
         send_message(chat_id, f"✅ Now Playing!\n\n📻 Group: {group_name}\n🎵 Audio is playing!\n\nUse /stop to stop.")
         return True
     except Exception as e:
@@ -147,7 +149,8 @@ async def stop_audio(chat_id):
         return
     
     try:
-        await user_vc.stop()
+        # Fixed: Use stop_audio() instead of stop()
+        await user_vc.stop_audio()
         send_message(chat_id, f"✅ Stopped playing!")
     except Exception as e:
         send_message(chat_id, f"❌ Error: {str(e)}")
@@ -157,7 +160,8 @@ async def logout_user(chat_id):
     
     if user_vc:
         try:
-            await user_vc.stop()
+            await user_vc.leave()  # Leave the voice chat
+            await user_vc.stop_audio()
         except:
             pass
     
