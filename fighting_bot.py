@@ -5,7 +5,7 @@ import asyncio
 import os
 from pyrogram import Client
 from pytgcalls import GroupCallFactory
-from pytgcalls.types import AudioPiped
+from pytgcalls.types import MediaStream
 from config import API_ID, API_HASH, BOT_TOKEN, OWNER_ID
 
 TOKEN = BOT_TOKEN
