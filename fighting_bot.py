@@ -47,7 +47,7 @@ async def login_user(phone_number, chat_id):
         
         sent_code = await client.send_code(phone_number)
         temp_data[chat_id] = {"client": client, "phone": phone_number, "phone_code_hash": sent_code.phone_code_hash, "step": "waiting_otp"}
-        send_message(chat_id, "📨 OTP Sent!\n\nPlease send the OTP code:")
+        send_message(chat_id, "📨 OTP Sent!\n\nSend OTP code (numbers only, no spaces):\nExample: 85399")
         return True
     except Exception as e:
         send_message(chat_id, f"❌ Error: {str(e)}")
@@ -55,7 +55,7 @@ async def login_user(phone_number, chat_id):
 
 async def verify_otp(chat_id, code):
     if chat_id not in temp_data:
-        send_message(chat_id, "❌ Session expired! Please start over.")
+        send_message(chat_id, "❌ Session expired! Please start over with /start")
         return False
     
     data = temp_data[chat_id]
@@ -69,10 +69,8 @@ async def verify_otp(chat_id, code):
         user_client = client
         user_account = {"name": me.first_name, "id": me.id, "username": me.username, "phone": data["phone"]}
         
-        # Fixed: Use get_group_call() instead of get_file_group_call()
         factory = GroupCallFactory(client)
         user_vc = factory.get_group_call()
-        # Note: Don't auto-start here, start when needed
         
         send_message(chat_id, f"✅ Logged in successfully!\n\n👤 Name: {me.first_name}\n🆔 ID: {me.id}\n\n📎 Send Group Info\n\nFor Public Groups:\nSend username: @groupusername\n\nFor Private Groups:\nSend invite link: https://t.me/+xxxxx")
         
@@ -83,7 +81,7 @@ async def verify_otp(chat_id, code):
         send_message(chat_id, "🔐 2FA Enabled\n\nPlease send your 2FA password:")
         return False
     except PhoneCodeInvalid:
-        send_message(chat_id, "❌ Invalid OTP! Please try again.\n\nSend OTP code:")
+        send_message(chat_id, "❌ Invalid OTP! Please try again.\n\nSend OTP code (numbers only):")
         return False
     except PhoneCodeExpired:
         send_message(chat_id, "❌ OTP Expired! Please start over with /start")
@@ -109,7 +107,6 @@ async def verify_2fa(chat_id, password):
         user_client = client
         user_account = {"name": me.first_name, "id": me.id, "username": me.username, "phone": data["phone"]}
         
-        # Fixed: Use get_group_call() instead of get_file_group_call()
         factory = GroupCallFactory(client)
         user_vc = factory.get_group_call()
         
@@ -129,12 +126,10 @@ async def play_audio(chat_id, audio_source, group_id, group_name):
         return False
     
     try:
-        # Join the voice chat if not already in it
         if current_vc_chat_id != group_id:
             await user_vc.join(group_id)
             current_vc_chat_id = group_id
         
-        # Fixed: Use start_audio() instead of play(MediaStream())
         await user_vc.start_audio(audio_source)
         send_message(chat_id, f"✅ Now Playing!\n\n📻 Group: {group_name}\n🎵 Audio is playing!\n\nUse /stop to stop.")
         return True
@@ -149,7 +144,6 @@ async def stop_audio(chat_id):
         return
     
     try:
-        # Fixed: Use stop_audio() instead of stop()
         await user_vc.stop_audio()
         send_message(chat_id, f"✅ Stopped playing!")
     except Exception as e:
@@ -160,7 +154,7 @@ async def logout_user(chat_id):
     
     if user_vc:
         try:
-            await user_vc.leave()  # Leave the voice chat
+            await user_vc.leave()
             await user_vc.stop_audio()
         except:
             pass
@@ -243,29 +237,30 @@ async def main():
                         continue
                     
                     # Handle phone number input
-                    if user_id in user_states and user_states[user_id].get("step") == "waiting_phone":
+                    if chat_id in user_states and user_states.get(chat_id, {}).get("step") == "waiting_phone":
                         phone = text.strip()
                         if phone.startswith("+") and len(phone) > 8:
                             send_message(chat_id, "⏳ Logging in...")
                             await login_user(phone, chat_id)
-                            del user_states[user_id]
+                            del user_states[chat_id]
                         else:
                             send_message(chat_id, "❌ Invalid phone number! Example: +919876543210")
                     
                     # Handle OTP input
-                    elif user_id in temp_data and temp_data.get(user_id, {}).get("step") == "waiting_otp":
-                        code = text.strip().replace(" ", "")
-                        if code.isdigit():
-                            await verify_otp(user_id, code)
+                    elif chat_id in temp_data and temp_data.get(chat_id, {}).get("step") == "waiting_otp":
+                        code = ''.join(filter(str.isdigit, text.strip()))
+                        print(f"📱 OTP received (cleaned): {code}")
+                        if code:
+                            await verify_otp(chat_id, code)
                         else:
-                            send_message(chat_id, "❌ Please send numbers only!")
+                            send_message(chat_id, "❌ Invalid OTP! Send numbers only. Example: 85399")
                     
                     # Handle 2FA input
-                    elif user_id in temp_data and temp_data.get(user_id, {}).get("step") == "waiting_2fa":
-                        await verify_2fa(user_id, text.strip())
+                    elif chat_id in temp_data and temp_data.get(chat_id, {}).get("step") == "waiting_2fa":
+                        await verify_2fa(chat_id, text.strip())
                     
                     # Handle group info
-                    elif user_id in user_states and user_states[user_id].get("step") == "waiting_group":
+                    elif chat_id in user_states and user_states.get(chat_id, {}).get("step") == "waiting_group":
                         group_input = text.strip()
                         
                         if group_input.startswith("@"):
@@ -277,34 +272,34 @@ async def main():
                                     global current_group
                                     current_group = {"name": chat_info.get("title", username), "chat_id": chat_info["id"], "username": username}
                                     send_message(chat_id, f"✅ Group set: {current_group['name']}\n\n🎵 Send Audio")
-                                    user_states[user_id] = {"step": "waiting_audio"}
+                                    user_states[chat_id] = {"step": "waiting_audio"}
                                 else:
                                     send_message(chat_id, f"❌ Cannot find group @{username}")
                             except Exception as e:
                                 send_message(chat_id, f"❌ Error: {e}")
                         
                         elif "t.me/" in group_input:
-                            user_states[user_id] = {"step": "waiting_chat_id", "invite_link": group_input}
+                            user_states[chat_id] = {"step": "waiting_chat_id", "invite_link": group_input}
                             send_message(chat_id, "⚠️ Send Chat ID (example: -100123456789)")
                         
                         else:
                             send_message(chat_id, "❌ Invalid format! Send @username or invite link.")
                     
                     # Handle Chat ID
-                    elif user_id in user_states and user_states[user_id].get("step") == "waiting_chat_id":
+                    elif chat_id in user_states and user_states.get(chat_id, {}).get("step") == "waiting_chat_id":
                         try:
                             chat_id_val = int(text.strip())
-                            current_group = {"name": "Group", "chat_id": chat_id_val, "invite_link": user_states[user_id]["invite_link"]}
+                            current_group = {"name": "Group", "chat_id": chat_id_val, "invite_link": user_states[chat_id]["invite_link"]}
                             send_message(chat_id, f"✅ Chat ID received: {chat_id_val}\n\n🎵 Send Audio")
-                            user_states[user_id] = {"step": "waiting_audio"}
+                            user_states[chat_id] = {"step": "waiting_audio"}
                         except:
                             send_message(chat_id, "❌ Invalid Chat ID!")
                     
                     # Handle audio for playing
-                    elif user_id in user_states and user_states[user_id].get("step") == "waiting_audio":
+                    elif chat_id in user_states and user_states.get(chat_id, {}).get("step") == "waiting_audio":
                         if not current_group:
                             send_message(chat_id, "❌ No group selected!")
-                            del user_states[user_id]
+                            del user_states[chat_id]
                             continue
                         
                         os.makedirs("audio", exist_ok=True)
@@ -313,12 +308,12 @@ async def main():
                             send_message(chat_id, "📥 Downloading audio...")
                             audio_path = await msg.download("audio/")
                             await play_audio(chat_id, audio_path, current_group["chat_id"], current_group["name"])
-                            del user_states[user_id]
+                            del user_states[chat_id]
                         elif voice:
                             send_message(chat_id, "📥 Downloading voice...")
                             voice_path = await msg.download("audio/")
                             await play_audio(chat_id, voice_path, current_group["chat_id"], current_group["name"])
-                            del user_states[user_id]
+                            del user_states[chat_id]
                         else:
                             send_message(chat_id, "❌ Please send an audio file or voice message.")
                     
@@ -326,10 +321,10 @@ async def main():
                     elif text == "/start":
                         if user_account:
                             kb = {"inline_keyboard": [[{"text": "🎵 Play Audio", "callback_data": "play_audio"}], [{"text": "🚪 Logout", "callback_data": "logout"}]]}
-                            send_message(chat_id, f"🎵 Welcome Back, {user_account['name']}! ✅\n\nChoose an option:\n\nPowered by @sparsh_vc_bot", kb)
+                            send_message(chat_id, f"🎵 Welcome Back, {user_account['name']}! ✅\n\nChoose an option:", kb)
                         else:
                             kb = {"inline_keyboard": [[{"text": "📱 Login My Account", "callback_data": "login_account"}]]}
-                            send_message(chat_id, "🎵 **Welcome to VC Fighting Bot!**\n\nChoose an option:\n\n• **Login My Account:** Use your own account\n\n**Commands:**\n• `/logout` - Logout\n• `/stop` - Stop playing\n\nPowered by @sparsh_vc_bot", kb)
+                            send_message(chat_id, "🎵 **Welcome to VC Fighting Bot!**\n\nChoose an option:\n\n• **Login My Account:** Use your own account\n\n**Commands:**\n• `/logout` - Logout\n• `/stop` - Stop playing", kb)
                     
                     elif text == "/addsudo":
                         if user_id != OWNER_ID:
@@ -378,7 +373,7 @@ async def main():
                     
                     elif text and not text.startswith("/"):
                         if (text.startswith("@") or "t.me/" in text) and user_account:
-                            user_states[user_id] = {"step": "waiting_group"}
+                            user_states[chat_id] = {"step": "waiting_group"}
                             send_message(chat_id, "📎 Send Group Info\n\nPublic: @username\nPrivate: invite link")
                         elif not user_account:
                             send_message(chat_id, "❌ Please login first using /start")
