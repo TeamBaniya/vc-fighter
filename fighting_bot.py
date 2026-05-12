@@ -5,8 +5,8 @@ import asyncio
 import os
 from pyrogram import Client
 from pyrogram.errors import SessionPasswordNeeded, PhoneCodeInvalid, PhoneCodeExpired
-from pytgcalls import GroupCallFactory, PyTgCalls
-from pytgcalls.types.input_stream import MediaStream  # Changed this line
+from pytgcalls import GroupCallFactory
+from pytgcalls import MediaStream
 from config import API_ID, API_HASH, BOT_TOKEN, OWNER_ID
 
 TOKEN = BOT_TOKEN
