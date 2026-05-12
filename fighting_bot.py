@@ -67,7 +67,6 @@ async def verify_otp(chat_id, code):
     client = data["client"]
     
     try:
-        # FIXED: Remove phone_code_hash parameter
         await client.sign_in(data["phone"], code)
         me = await client.get_me()
         
@@ -75,31 +74,31 @@ async def verify_otp(chat_id, code):
         user_client = client
         user_account = {"name": me.first_name, "id": me.id, "username": me.username}
         
-        # Initialize voice call
         factory = GroupCallFactory(client)
         user_vc = factory.get_group_call()
         
-        # Send success messages
         send_message(chat_id, f"✅ Logged in as {me.first_name}!")
-        await asyncio.sleep(0.5)
         send_message(chat_id, f"📎 Now send group username (example: @groupname)")
         
-        # Cleanup
         del temp_data[chat_id]
         print(f"✅ Login successful for {me.first_name}")
         return True
         
     except SessionPasswordNeeded:
+        print(f"🔐 2FA Required - waiting for password")
         temp_data[chat_id]["step"] = "waiting_2fa"
-        send_message(chat_id, "🔐 2FA Required\n\nSend your password:")
+        send_message(chat_id, "🔐 **2-Step Verification Required**\n\nPlease send your 2FA password:")
         return False
+        
     except PhoneCodeInvalid:
         send_message(chat_id, "❌ Invalid OTP! Try again:")
         return False
+        
     except PhoneCodeExpired:
         send_message(chat_id, "❌ OTP Expired! Use /start again")
         del temp_data[chat_id]
         return False
+        
     except Exception as e:
         error_msg = str(e)[:100]
         send_message(chat_id, f"❌ Error: {error_msg}")
@@ -107,8 +106,10 @@ async def verify_otp(chat_id, code):
         return False
 
 async def verify_2fa(chat_id, password):
+    print(f"🔐 Verifying 2FA for chat {chat_id}")
+    
     if chat_id not in temp_data:
-        send_message(chat_id, "❌ Session expired!")
+        send_message(chat_id, "❌ Session expired! Use /start again")
         return False
     
     data = temp_data[chat_id]
@@ -129,24 +130,24 @@ async def verify_2fa(chat_id, password):
         send_message(chat_id, f"📎 Now send group username (example: @groupname)")
         
         del temp_data[chat_id]
+        print(f"✅ 2FA login successful for {me.first_name}")
         return True
+        
     except Exception as e:
         send_message(chat_id, f"❌ Wrong password! Try again:")
+        print(f"2FA Error: {e}")
         return False
 
 async def play_audio(chat_id, audio_source, group_id, group_name):
-    global user_vc, current_group
+    global user_vc
     
     if not user_vc:
         send_message(chat_id, "❌ No account logged in!")
         return False
     
     try:
-        # Join voice chat
         await user_vc.join(group_id)
         await asyncio.sleep(2)
-        
-        # Play audio
         await user_vc.start_audio(audio_source)
         
         send_message(chat_id, f"✅ Now playing in {group_name}!\nUse /stop to stop")
@@ -205,7 +206,6 @@ async def main():
             for update in data.get("result", []):
                 last_update_id = update["update_id"]
                 
-                # Handle callback queries
                 if "callback_query" in update:
                     callback = update["callback_query"]
                     user_id = callback["from"]["id"]
@@ -234,7 +234,6 @@ async def main():
                     
                     requests.post(f"{API_URL}/answerCallbackQuery", json={"callback_query_id": callback["id"]})
                 
-                # Handle messages
                 elif "message" in update:
                     msg = update["message"]
                     user_id = msg["from"]["id"]
@@ -248,7 +247,7 @@ async def main():
                     
                     print(f"\n📨 Message: {text if text else '[File]'}")
                     
-                    # Step 1: Waiting for phone number
+                    # Handle phone number input
                     if chat_id in user_states and user_states[chat_id].get("step") == "waiting_phone":
                         if text.startswith("+"):
                             await login_user(text, chat_id)
@@ -256,7 +255,7 @@ async def main():
                         else:
                             send_message(chat_id, "❌ Send phone with + code\nExample: +919876543210")
                     
-                    # Step 2: Waiting for OTP
+                    # Handle OTP input
                     elif chat_id in temp_data and temp_data[chat_id].get("step") == "waiting_otp":
                         code = ''.join(filter(str.isdigit, text))
                         if code:
@@ -264,11 +263,11 @@ async def main():
                         else:
                             send_message(chat_id, "❌ Send numbers only")
                     
-                    # Step 3: Waiting for 2FA
+                    # Handle 2FA input
                     elif chat_id in temp_data and temp_data[chat_id].get("step") == "waiting_2fa":
                         await verify_2fa(chat_id, text)
                     
-                    # Step 4: Set group from username
+                    # Handle group username
                     elif user_account and text and text.startswith("@") and chat_id not in user_states:
                         username = text[1:]
                         try:
@@ -286,7 +285,7 @@ async def main():
                         except Exception as e:
                             send_message(chat_id, f"❌ Error: {e}")
                     
-                    # Step 5: Waiting for audio file
+                    # Handle audio for playing
                     elif chat_id in user_states and user_states[chat_id].get("step") == "waiting_audio":
                         if audio or voice:
                             send_message(chat_id, "📥 Downloading audio...")
@@ -308,7 +307,8 @@ async def main():
                                 [{"text": "🎵 Play Audio", "callback_data": "play_audio"}],
                                 [{"text": "🚪 Logout", "callback_data": "logout"}]
                             ]}
-                            send_message(chat_id, f"🎵 Welcome back {user_account['name']}!\n\nGroup: {current_group['name'] if current_group else 'Not set'}", kb)
+                            group_text = f"\n\n📢 Group: {current_group['name'] if current_group else 'Not set'}"
+                            send_message(chat_id, f"🎵 Welcome back {user_account['name']}!{group_text}", kb)
                         else:
                             kb = {"inline_keyboard": [[{"text": "📱 Login", "callback_data": "login_account"}]]}
                             send_message(chat_id, "🎵 **Welcome to VC Fighting Bot!**\n\nClick Login to start", kb)
