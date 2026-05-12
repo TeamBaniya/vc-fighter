@@ -67,7 +67,12 @@ async def verify_otp(chat_id, code):
     client = data["client"]
     
     try:
-        await client.sign_in(data["phone"], code)
+        # CORRECT SYNTAX for Pyrogram
+        await client.sign_in(
+            phone_number=data["phone"],
+            code=code,
+            phone_code_hash=data["phone_code_hash"]
+        )
         me = await client.get_me()
         
         global user_account, user_client, user_vc
@@ -78,6 +83,7 @@ async def verify_otp(chat_id, code):
         user_vc = factory.get_group_call()
         
         send_message(chat_id, f"✅ Logged in as {me.first_name}!")
+        await asyncio.sleep(0.5)
         send_message(chat_id, f"📎 Now send group username (example: @groupname)")
         
         del temp_data[chat_id]
@@ -187,7 +193,7 @@ async def logout_user(chat_id):
     user_vc = None
     current_group = None
     
-    send_message(chat_id, "✅ Logged out successfully!")
+    send_message(chat_id, "✅ Logged out successfully!\n\nSend /start to login again.")
 
 async def main():
     global last_update_id
