@@ -133,9 +133,8 @@ async def play_audio(chat_id, audio_source, group_id, group_name):
             await user_vc.join(group_id)
             current_vc_chat_id = group_id
         
-        # Use MediaStream instead of AudioPiped
         await user_vc.play(MediaStream(audio_source))
-        send_message(chat_id, f"✅ Now Playing!\n\n📻 Group: {group_name}\n🎵 Audio is playing in voice chat!\n\nUse /stop to stop playing.")
+        send_message(chat_id, f"✅ Now Playing!\n\n📻 Group: {group_name}\n🎵 Audio is playing!\n\nUse /stop to stop.")
         return True
     except Exception as e:
         send_message(chat_id, f"❌ Error playing audio: {str(e)[:100]}")
@@ -149,7 +148,7 @@ async def stop_audio(chat_id):
     
     try:
         await user_vc.stop()
-        send_message(chat_id, f"✅ Stopped playing!\n\n📻 Group: {current_group['name'] if current_group else 'Unknown'}")
+        send_message(chat_id, f"✅ Stopped playing!")
     except Exception as e:
         send_message(chat_id, f"❌ Error: {str(e)}")
 
@@ -176,218 +175,214 @@ async def logout_user(chat_id):
     
     send_message(chat_id, "✅ Logged out successfully!\n\nSend /start to login again.")
 
-# Main loop
-while True:
-    try:
-        response = requests.get(f"{API_URL}/getUpdates", params={"offset": last_update_id + 1, "timeout": 30}, timeout=35)
-        if response.status_code != 200:
-            time.sleep(5)
-            continue
-        data = response.json()
-        if not data.get("ok"):
-            time.sleep(5)
-            continue
-        for update in data.get("result", []):
-            last_update_id = update["update_id"]
-            
-            if "callback_query" in update:
-                callback = update["callback_query"]
-                user_id = callback["from"]["id"]
-                chat_id = callback["message"]["chat"]["id"]
-                data_cb = callback["data"]
-                
-                print(f"\n📞 Callback: {data_cb}")
-                
-                if not is_sudo(user_id):
-                    send_message(chat_id, "❌ Access Denied! Only bot owner can use this bot.")
-                    requests.post(f"{API_URL}/answerCallbackQuery", json={"callback_query_id": callback["id"]})
-                    continue
-                
-                if data_cb == "default_account":
-                    send_message(chat_id, "🔧 Default account feature coming soon!\n\nUse 'Login My Account' for now.")
-                
-                elif data_cb == "login_account":
-                    send_message(chat_id, "📱 Login to Your Account\n\nSend your phone number with country code:\nExample: +919876543210")
-                    user_states[user_id] = {"step": "waiting_phone"}
-                
-                elif data_cb == "play_audio":
-                    if not user_account:
-                        send_message(chat_id, "❌ No account logged in! Use /start to login first.")
-                    elif not current_group:
-                        send_message(chat_id, "❌ No group selected! Send group username or invite link first.")
-                    else:
-                        send_message(chat_id, "🎵 Send Audio\n\nYou can send:\n• Audio file 🎵\n• Voice message 🎤")
-                        user_states[user_id] = {"step": "waiting_audio"}
-                
-                elif data_cb == "logout":
-                    await logout_user(chat_id)
-                
-                requests.post(f"{API_URL}/answerCallbackQuery", json={"callback_query_id": callback["id"]})
-            
-            elif "message" in update:
-                msg = update["message"]
-                user_id = msg["from"]["id"]
-                chat_id = msg["chat"]["id"]
-                text = msg.get("text", "")
-                audio = msg.get("audio")
-                voice = msg.get("voice")
-                
-                print(f"\n📨 Message: {text if text else '[Audio/Voice]'}")
-                
-                if not is_sudo(user_id):
-                    send_message(chat_id, "❌ Access Denied! Only bot owner can use this bot.")
-                    continue
-                
-                # Handle phone number input
-                if user_id in user_states and user_states[user_id].get("step") == "waiting_phone":
-                    phone = text.strip()
-                    if phone.startswith("+") and len(phone) > 8:
-                        send_message(chat_id, "⏳ Logging in...")
-                        await login_user(phone, chat_id)
-                        del user_states[user_id]
-                    else:
-                        send_message(chat_id, "❌ Invalid phone number! Send with country code.\nExample: +919876543210")
-                
-                # Handle OTP input
-                elif user_id in temp_data and temp_data.get(user_id, {}).get("step") == "waiting_otp":
-                    code = text.strip()
-                    await verify_otp(user_id, code)
-                
-                # Handle 2FA input
-                elif user_id in temp_data and temp_data.get(user_id, {}).get("step") == "waiting_2fa":
-                    password = text.strip()
-                    await verify_2fa(user_id, password)
-                
-                # Handle group info
-                elif user_id in user_states and user_states[user_id].get("step") == "waiting_group":
-                    group_input = text.strip()
-                    
-                    if group_input.startswith("@"):
-                        username = group_input[1:]
-                        try:
-                            resp = requests.get(f"{API_URL}/getChat", params={"chat_id": f"@{username}"}, timeout=10)
-                            if resp.ok:
-                                chat_info = resp.json()["result"]
-                                current_group = {"name": chat_info.get("title", username), "chat_id": chat_info["id"], "username": username}
-                                send_message(chat_id, f"✅ Group set: {current_group['name']}\n\n🎵 Send Audio\n\nYou can send:\n• Audio file 🎵\n• Voice message 🎤")
-                                user_states[user_id] = {"step": "waiting_audio"}
-                            else:
-                                send_message(chat_id, f"❌ Cannot find group @{username}")
-                        except Exception as e:
-                            send_message(chat_id, f"❌ Error: {e}")
-                    
-                    elif "t.me/" in group_input:
-                        user_states[user_id] = {"step": "waiting_chat_id", "invite_link": group_input}
-                        send_message(chat_id, "⚠️ Send Chat ID (example: -100123456789)")
-                    
-                    else:
-                        send_message(chat_id, "❌ Invalid format! Send @username or invite link.")
-                
-                # Handle Chat ID
-                elif user_id in user_states and user_states[user_id].get("step") == "waiting_chat_id":
-                    try:
-                        chat_id_val = int(text.strip())
-                        current_group = {"name": "Group", "chat_id": chat_id_val, "invite_link": user_states[user_id]["invite_link"]}
-                        send_message(chat_id, f"✅ Chat ID received: {chat_id_val}\n\n🎵 Send Audio\n\nYou can send:\n• Audio file 🎵\n• Voice message 🎤")
-                        user_states[user_id] = {"step": "waiting_audio"}
-                    except:
-                        send_message(chat_id, "❌ Invalid Chat ID!")
-                
-                # Handle audio for playing
-                elif user_id in user_states and user_states[user_id].get("step") == "waiting_audio":
-                    if not current_group:
-                        send_message(chat_id, "❌ No group selected!")
-                        del user_states[user_id]
-                        continue
-                    
-                    os.makedirs("audio", exist_ok=True)
-                    
-                    if audio:
-                        send_message(chat_id, "📥 Downloading audio...")
-                        audio_path = await msg.download("audio/")
-                        await play_audio(chat_id, audio_path, current_group["chat_id"], current_group["name"])
-                        del user_states[user_id]
-                    elif voice:
-                        send_message(chat_id, "📥 Downloading voice...")
-                        voice_path = await msg.download("audio/")
-                        await play_audio(chat_id, voice_path, current_group["chat_id"], current_group["name"])
-                        del user_states[user_id]
-                    else:
-                        send_message(chat_id, "❌ Please send an audio file or voice message.")
-                
-                # Handle commands
-                elif text == "/start":
-                    if user_account:
-                        kb = {"inline_keyboard": [
-                            [{"text": "🎵 Play Audio", "callback_data": "play_audio"}],
-                            [{"text": "🚪 Logout", "callback_data": "logout"}]
-                        ]}
-                        send_message(chat_id, f"🎵 Welcome Back, {user_account['name']}! ✅\n\nChoose an option:\n\nPowered by @sparsh_vc_bot", kb)
-                    else:
-                        kb = {"inline_keyboard": [
-                            [{"text": "🔧 Default Account", "callback_data": "default_account"}],
-                            [{"text": "📱 Login My Account", "callback_data": "login_account"}]
-                        ]}
-                        send_message(chat_id, "🎵 **Welcome to VC Fighting Bot!**\n\nChoose an option:\n\n• **Default Account:** Use pre-configured account\n• **Login My Account:** Use your own account\n\n**Commands:**\n• `/logout` - Logout\n• `/stop` - Stop playing\n\nPowered by @sparsh_vc_bot", kb)
-                
-                elif text == "/addsudo":
-                    if user_id != OWNER_ID:
-                        send_message(chat_id, "❌ Only bot owner can add sudo users!")
-                        continue
-                    parts = text.split()
-                    if len(parts) != 2:
-                        send_message(chat_id, "Usage: /addsudo <user_id>")
-                        continue
-                    try:
-                        sudo_id = int(parts[1])
-                        if sudo_id not in sudo_users:
-                            sudo_users.append(sudo_id)
-                            send_message(chat_id, f"✅ User {sudo_id} added as sudo user!")
-                        else:
-                            send_message(chat_id, "User already in sudo list!")
-                    except:
-                        send_message(chat_id, "❌ Invalid user ID!")
-                
-                elif text == "/rmsudo":
-                    if user_id != OWNER_ID:
-                        send_message(chat_id, "❌ Only bot owner can remove sudo users!")
-                        continue
-                    parts = text.split()
-                    if len(parts) != 2:
-                        send_message(chat_id, "Usage: /rmsudo <user_id>")
-                        continue
-                    try:
-                        sudo_id = int(parts[1])
-                        if sudo_id in sudo_users and sudo_id != OWNER_ID:
-                            sudo_users.remove(sudo_id)
-                            send_message(chat_id, f"✅ User {sudo_id} removed from sudo!")
-                        else:
-                            send_message(chat_id, "User not found in sudo list!")
-                    except:
-                        send_message(chat_id, "❌ Invalid user ID!")
-                
-                elif text == "/logout":
-                    if user_account:
-                        await logout_user(chat_id)
-                    else:
-                        send_message(chat_id, "❌ No account is logged in!")
-                
-                elif text == "/stop":
-                    await stop_audio(chat_id)
-                
-                elif text and not text.startswith("/"):
-                    if (text.startswith("@") or "t.me/" in text) and user_account:
-                        user_states[user_id] = {"step": "waiting_group"}
-                        send_message(chat_id, "📎 Send Group Info\n\nPublic: @username\nPrivate: invite link")
-                    elif not user_account:
-                        send_message(chat_id, "❌ Please login first using /start")
-        
-        time.sleep(1)
-    except KeyboardInterrupt:
-        print("\nBot stopped")
-        break
-    except Exception as e:
-        print(f"Error: {e}")
-        time.sleep(5)
+async def handle_callback(chat_id, user_id, data_cb):
+    if data_cb == "default_account":
+        send_message(chat_id, "🔧 Default account coming soon!\n\nUse 'Login My Account' for now.")
+    elif data_cb == "login_account":
+        send_message(chat_id, "📱 Login to Your Account\n\nSend your phone number with country code:\nExample: +919876543210")
+        user_states[user_id] = {"step": "waiting_phone"}
+    elif data_cb == "play_audio":
+        if not user_account:
+            send_message(chat_id, "❌ No account logged in! Use /start first.")
+        elif not current_group:
+            send_message(chat_id, "❌ No group selected! Send group username or invite link.")
+        else:
+            send_message(chat_id, "🎵 Send Audio\n\nYou can send:\n• Audio file 🎵\n• Voice message 🎤")
+            user_states[user_id] = {"step": "waiting_audio"}
+    elif data_cb == "logout":
+        await logout_user(chat_id)
 
-print("Bot stopped")
+async def main():
+    global last_update_id
+    while True:
+        try:
+            response = requests.get(f"{API_URL}/getUpdates", params={"offset": last_update_id + 1, "timeout": 30}, timeout=35)
+            if response.status_code != 200:
+                time.sleep(5)
+                continue
+            data = response.json()
+            if not data.get("ok"):
+                time.sleep(5)
+                continue
+            
+            for update in data.get("result", []):
+                last_update_id = update["update_id"]
+                
+                if "callback_query" in update:
+                    callback = update["callback_query"]
+                    user_id = callback["from"]["id"]
+                    chat_id = callback["message"]["chat"]["id"]
+                    data_cb = callback["data"]
+                    
+                    print(f"\n📞 Callback: {data_cb}")
+                    
+                    if not is_sudo(user_id):
+                        send_message(chat_id, "❌ Access Denied! Only bot owner can use this bot.")
+                        requests.post(f"{API_URL}/answerCallbackQuery", json={"callback_query_id": callback["id"]})
+                        continue
+                    
+                    await handle_callback(chat_id, user_id, data_cb)
+                    requests.post(f"{API_URL}/answerCallbackQuery", json={"callback_query_id": callback["id"]})
+                
+                elif "message" in update:
+                    msg = update["message"]
+                    user_id = msg["from"]["id"]
+                    chat_id = msg["chat"]["id"]
+                    text = msg.get("text", "")
+                    audio = msg.get("audio")
+                    voice = msg.get("voice")
+                    
+                    print(f"\n📨 Message: {text if text else '[Audio/Voice]'}")
+                    
+                    if not is_sudo(user_id):
+                        send_message(chat_id, "❌ Access Denied!")
+                        continue
+                    
+                    # Handle phone number input
+                    if user_id in user_states and user_states[user_id].get("step") == "waiting_phone":
+                        phone = text.strip()
+                        if phone.startswith("+") and len(phone) > 8:
+                            send_message(chat_id, "⏳ Logging in...")
+                            await login_user(phone, chat_id)
+                            del user_states[user_id]
+                        else:
+                            send_message(chat_id, "❌ Invalid phone number! Example: +919876543210")
+                    
+                    # Handle OTP input
+                    elif user_id in temp_data and temp_data.get(user_id, {}).get("step") == "waiting_otp":
+                        code = text.strip().replace(" ", "")
+                        if code.isdigit():
+                            await verify_otp(user_id, code)
+                        else:
+                            send_message(chat_id, "❌ Please send numbers only!")
+                    
+                    # Handle 2FA input
+                    elif user_id in temp_data and temp_data.get(user_id, {}).get("step") == "waiting_2fa":
+                        await verify_2fa(user_id, text.strip())
+                    
+                    # Handle group info
+                    elif user_id in user_states and user_states[user_id].get("step") == "waiting_group":
+                        group_input = text.strip()
+                        
+                        if group_input.startswith("@"):
+                            username = group_input[1:]
+                            try:
+                                resp = requests.get(f"{API_URL}/getChat", params={"chat_id": f"@{username}"}, timeout=10)
+                                if resp.ok:
+                                    chat_info = resp.json()["result"]
+                                    global current_group
+                                    current_group = {"name": chat_info.get("title", username), "chat_id": chat_info["id"], "username": username}
+                                    send_message(chat_id, f"✅ Group set: {current_group['name']}\n\n🎵 Send Audio")
+                                    user_states[user_id] = {"step": "waiting_audio"}
+                                else:
+                                    send_message(chat_id, f"❌ Cannot find group @{username}")
+                            except Exception as e:
+                                send_message(chat_id, f"❌ Error: {e}")
+                        
+                        elif "t.me/" in group_input:
+                            user_states[user_id] = {"step": "waiting_chat_id", "invite_link": group_input}
+                            send_message(chat_id, "⚠️ Send Chat ID (example: -100123456789)")
+                        
+                        else:
+                            send_message(chat_id, "❌ Invalid format! Send @username or invite link.")
+                    
+                    # Handle Chat ID
+                    elif user_id in user_states and user_states[user_id].get("step") == "waiting_chat_id":
+                        try:
+                            chat_id_val = int(text.strip())
+                            current_group = {"name": "Group", "chat_id": chat_id_val, "invite_link": user_states[user_id]["invite_link"]}
+                            send_message(chat_id, f"✅ Chat ID received: {chat_id_val}\n\n🎵 Send Audio")
+                            user_states[user_id] = {"step": "waiting_audio"}
+                        except:
+                            send_message(chat_id, "❌ Invalid Chat ID!")
+                    
+                    # Handle audio for playing
+                    elif user_id in user_states and user_states[user_id].get("step") == "waiting_audio":
+                        if not current_group:
+                            send_message(chat_id, "❌ No group selected!")
+                            del user_states[user_id]
+                            continue
+                        
+                        os.makedirs("audio", exist_ok=True)
+                        
+                        if audio:
+                            send_message(chat_id, "📥 Downloading audio...")
+                            audio_path = await msg.download("audio/")
+                            await play_audio(chat_id, audio_path, current_group["chat_id"], current_group["name"])
+                            del user_states[user_id]
+                        elif voice:
+                            send_message(chat_id, "📥 Downloading voice...")
+                            voice_path = await msg.download("audio/")
+                            await play_audio(chat_id, voice_path, current_group["chat_id"], current_group["name"])
+                            del user_states[user_id]
+                        else:
+                            send_message(chat_id, "❌ Please send an audio file or voice message.")
+                    
+                    # Handle commands
+                    elif text == "/start":
+                        if user_account:
+                            kb = {"inline_keyboard": [[{"text": "🎵 Play Audio", "callback_data": "play_audio"}], [{"text": "🚪 Logout", "callback_data": "logout"}]]}
+                            send_message(chat_id, f"🎵 Welcome Back, {user_account['name']}! ✅\n\nChoose an option:\n\nPowered by @sparsh_vc_bot", kb)
+                        else:
+                            kb = {"inline_keyboard": [[{"text": "📱 Login My Account", "callback_data": "login_account"}]]}
+                            send_message(chat_id, "🎵 **Welcome to VC Fighting Bot!**\n\nChoose an option:\n\n• **Login My Account:** Use your own account\n\n**Commands:**\n• `/logout` - Logout\n• `/stop` - Stop playing\n\nPowered by @sparsh_vc_bot", kb)
+                    
+                    elif text == "/addsudo":
+                        if user_id != OWNER_ID:
+                            send_message(chat_id, "❌ Only bot owner can add sudo users!")
+                            continue
+                        parts = text.split()
+                        if len(parts) != 2:
+                            send_message(chat_id, "Usage: /addsudo <user_id>")
+                            continue
+                        try:
+                            sudo_id = int(parts[1])
+                            if sudo_id not in sudo_users:
+                                sudo_users.append(sudo_id)
+                                send_message(chat_id, f"✅ User {sudo_id} added as sudo user!")
+                            else:
+                                send_message(chat_id, "User already in sudo list!")
+                        except:
+                            send_message(chat_id, "❌ Invalid user ID!")
+                    
+                    elif text == "/rmsudo":
+                        if user_id != OWNER_ID:
+                            send_message(chat_id, "❌ Only bot owner can remove sudo users!")
+                            continue
+                        parts = text.split()
+                        if len(parts) != 2:
+                            send_message(chat_id, "Usage: /rmsudo <user_id>")
+                            continue
+                        try:
+                            sudo_id = int(parts[1])
+                            if sudo_id in sudo_users and sudo_id != OWNER_ID:
+                                sudo_users.remove(sudo_id)
+                                send_message(chat_id, f"✅ User {sudo_id} removed from sudo!")
+                            else:
+                                send_message(chat_id, "User not found in sudo list!")
+                        except:
+                            send_message(chat_id, "❌ Invalid user ID!")
+                    
+                    elif text == "/logout":
+                        if user_account:
+                            await logout_user(chat_id)
+                        else:
+                            send_message(chat_id, "❌ No account is logged in!")
+                    
+                    elif text == "/stop":
+                        await stop_audio(chat_id)
+                    
+                    elif text and not text.startswith("/"):
+                        if (text.startswith("@") or "t.me/" in text) and user_account:
+                            user_states[user_id] = {"step": "waiting_group"}
+                            send_message(chat_id, "📎 Send Group Info\n\nPublic: @username\nPrivate: invite link")
+                        elif not user_account:
+                            send_message(chat_id, "❌ Please login first using /start")
+            
+            time.sleep(1)
+        except Exception as e:
+            print(f"Error: {e}")
+            time.sleep(5)
+
+if __name__ == "__main__":
+    asyncio.run(main())
